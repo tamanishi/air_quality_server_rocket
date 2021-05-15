@@ -4,16 +4,20 @@
 extern crate rocket;
 
 mod air_quality;
+mod baseline;
 
+use std::io::prelude::*;
+use std::fs::File;
 use std::sync::Mutex;
 
 use chrono::Local;
 use linux_embedded_hal::{Delay, I2cdev};
 use rocket::State;
 use rocket_contrib::json::Json;
-use sgp30::{Sgp30, Humidity};
-
+use sgp30::{Sgp30, Humidity, Baseline};
+// use serde::{Serialize, Deserialize};
 use air_quality::AirQuality;
+use baseline::MyBaseline;
 
 fn rel_humidity_to_abs_humidity(temp: f32, rel_humidty: f32) -> f32 {
     // see https://komoriss.com/relative-humidity-volumetric-humidity/
@@ -79,6 +83,18 @@ fn rocket() -> rocket::Rocket {
     let dev = I2cdev::new("/dev/i2c-1").unwrap();
     let address = 0x58;
     let mut sgp30 = Sgp30::new(dev, address, Delay);
+
+    let base_line: Baseline = sgp30.get_baseline().unwrap();
+    let hoge = MyBaseline {
+        co2eq: base_line.co2eq,
+        tvoc: base_line.tvoc,
+    };
+
+    let base_line_txt = serde_json::to_string(&hoge).unwrap();
+    println!("baseline : {:?}", base_line_txt);
+
+    let mut file = File::create("baseline.json").unwrap();
+    file.write_all(&base_line_txt.as_bytes()).unwrap();
 
     println!("Initializing Sgp30 ...");
 
