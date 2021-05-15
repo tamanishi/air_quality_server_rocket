@@ -91,14 +91,27 @@ fn rocket() -> rocket::Rocket {
     };
 
     let base_line_json = serde_json::to_string(&my_base_line).unwrap();
-    println!("baseline : {:?}", base_line_json);
+    println!("read baseline : {:?}", base_line);
 
     let mut file = File::create("baseline.json").unwrap();
-    file.write_all(&base_line_txt.as_bytes()).unwrap();
+    file.write_all(&base_line_json.as_bytes()).unwrap();
+
+    drop(file);
+
+    file = File::open("baseline.json").unwrap();
+    let hoge: MyBaseline = serde_json::from_reader(file).unwrap();
+    let base_line_to_restore = Baseline {
+        co2eq: hoge.co2eq,
+        tvoc: hoge.tvoc,
+    };
+
+    println!("restored baseline : {:?}", base_line_to_restore);
 
     println!("Initializing Sgp30 ...");
 
     sgp30.init().unwrap();
+    sgp30.set_baseline(&base_line_to_restore).unwrap();
+
     rocket::ignite()
         .mount("/", routes![measure])
         .manage(Mutex::new(sgp30))
