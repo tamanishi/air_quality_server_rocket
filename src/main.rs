@@ -85,13 +85,13 @@ fn rocket() -> rocket::Rocket {
     let mut sgp30 = Sgp30::new(dev, address, Delay);
 
     let base_line: Baseline = sgp30.get_baseline().unwrap();
-    let hoge = MyBaseline {
+    let my_base_line = MyBaseline {
         co2eq: base_line.co2eq,
         tvoc: base_line.tvoc,
     };
 
-    let base_line_txt = serde_json::to_string(&hoge).unwrap();
-    println!("baseline : {:?}", base_line_txt);
+    let base_line_json = serde_json::to_string(&my_base_line).unwrap();
+    println!("baseline : {:?}", base_line_json);
 
     let mut file = File::create("baseline.json").unwrap();
     file.write_all(&base_line_txt.as_bytes()).unwrap();
