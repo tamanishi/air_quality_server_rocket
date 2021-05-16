@@ -15,9 +15,22 @@ use linux_embedded_hal::{Delay, I2cdev};
 use rocket::State;
 use rocket_contrib::json::Json;
 use sgp30::{Sgp30, Humidity, Baseline};
-// use serde::{Serialize, Deserialize};
 use air_quality::AirQuality;
 use baseline::MyBaseline;
+
+fn save_baseline(sgp30: &mut Sgp30<I2cdev, Delay>) {
+    let base_line: Baseline = sgp30.get_baseline().unwrap();
+    let my_base_line = MyBaseline {
+        co2eq: base_line.co2eq,
+        tvoc: base_line.tvoc,
+    };
+
+    let base_line_json = serde_json::to_string(&my_base_line).unwrap();
+    println!("read baseline: {:?}", base_line);
+
+    let mut file = File::create("baseline.json").unwrap();
+    file.write_all(&base_line_json.as_bytes()).unwrap();
+}
 
 fn rel_humidity_to_abs_humidity(temp: f32, rel_humidty: f32) -> f32 {
     // see https://komoriss.com/relative-humidity-volumetric-humidity/
@@ -57,6 +70,8 @@ fn separate_humidity_value(num: f32) -> [u8; 2] {
 fn measure(mutex: State<Mutex<Sgp30<I2cdev, Delay>>>, temp: Option<String>, humidity: Option<String>) -> Json<AirQuality> {
     let mut sgp30 = mutex.lock().unwrap();
 
+    save_baseline(&mut sgp30);
+
     if let (Some(temp), Some(humidity)) = (temp, humidity) {
         // calc absolute humidity
         let abs_humidity = rel_humidity_to_abs_humidity(temp.parse::<f32>().unwrap(), humidity.parse::<f32>().unwrap());
@@ -84,33 +99,21 @@ fn rocket() -> rocket::Rocket {
     let address = 0x58;
     let mut sgp30 = Sgp30::new(dev, address, Delay);
 
-    let base_line: Baseline = sgp30.get_baseline().unwrap();
-    let my_base_line = MyBaseline {
-        co2eq: base_line.co2eq,
-        tvoc: base_line.tvoc,
-    };
-
-    let base_line_json = serde_json::to_string(&my_base_line).unwrap();
-    println!("read baseline : {:?}", base_line);
-
-    let mut file = File::create("baseline.json").unwrap();
-    file.write_all(&base_line_json.as_bytes()).unwrap();
-
-    drop(file);
-
-    file = File::open("baseline.json").unwrap();
-    let hoge: MyBaseline = serde_json::from_reader(file).unwrap();
-    let base_line_to_restore = Baseline {
-        co2eq: hoge.co2eq,
-        tvoc: hoge.tvoc,
-    };
-
-    println!("restored baseline : {:?}", base_line_to_restore);
-
     println!("Initializing Sgp30 ...");
 
     sgp30.init().unwrap();
-    sgp30.set_baseline(&base_line_to_restore).unwrap();
+
+    let file = File::open("baseline.json");
+
+    if let  Ok(file) = file {
+        let hoge: MyBaseline = serde_json::from_reader(file).unwrap();
+        let base_line_to_load = Baseline {
+            co2eq: hoge.co2eq,
+            tvoc: hoge.tvoc,
+        };
+        println!("load baseline: {:?}", base_line_to_load);
+        sgp30.set_baseline(&base_line_to_load).unwrap();
+    }
 
     rocket::ignite()
         .mount("/", routes![measure])
